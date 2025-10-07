@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Live Match – Timeline 2 colonnes</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <style>
+    /* Fond terrain de foot (SVG léger + lignes blanches) */
+    .pitch {
+      background: radial-gradient(ellipse at center, rgba(0,0,0,0.06), rgba(0,0,0,0.12)),
+                  repeating-linear-gradient(0deg, #1b6b34 0, #1b6b34 40px, #1f7c3b 40px, #1f7c3b 80px);
+      position: relative;
+      overflow: hidden;
+    }
+    .pitch::before { /* Lignes principales */
+      content: "";
+      position: absolute; inset: 16px;
+      border: 3px solid rgba(255,255,255,0.9);
+      border-radius: 16px;
+      pointer-events: none;
+    }
+    .pitch::after { /* Ligne médiane + rond central */
+      content: "";
+      position: absolute; left: 50%; top: 16px; bottom: 16px; width: 3px;
+      background: rgba(255,255,255,0.9);
+      transform: translateX(-50%);
+      box-shadow: 0 0 0 0 rgba(0,0,0,0);
+      pointer-events: none;
+    }
+    .center-circle {
+      position: absolute; left: 50%; top: 50%; width: 160px; height: 160px;
+      border-radius: 9999px; border: 3px solid rgba(255,255,255,0.9);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+    .goal-area { /* Surcouches de surface de réparation (indicatives) */
+      position: absolute; width: 180px; height: 280px; border: 3px solid rgba(255,255,255,0.6);
+      top: 50%; transform: translateY(-50%);
+      pointer-events: none;
+    }
+    .goal-left { left: 16px; border-left: none; border-radius: 0 12px 12px 0; }
+    .goal-right { right: 16px; border-right: none; border-radius: 12px 0 0 12px; }
+
+    /* Badges évènements */
+    .evt { backdrop-filter: blur(2px); }
+  </style>
+</head>
+<body class="bg-neutral-100 text-neutral-900">
+  <div class="max-w-5xl mx-auto p-4 space-y-4">
+    <header class="flex items-center justify-between gap-3">
+      <h1 class="text-xl font-bold">Live Match – Timeline</h1>
+      <div class="text-sm opacity-80">Autosave activé • Export PNG</div>
+    </header>
+
+    <!-- PARAMÈTRES DU MATCH -->
+    <section class="bg-white rounded-2xl shadow p-4 space-y-3">
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="space-y-2">
+          <label class="text-sm font-semibold">Équipe domicile</label>
+          <input id="homeName" class="w-full border rounded-lg px-3 py-2" placeholder="Nom de l'équipe domicile" />
+          <div class="flex items-center gap-3">
+            <label class="text-sm">Logo domicile</label>
+            <input id="homeLogo" type="file" accept="image/*" class="text-sm" />
+          </div>
+        </div>
+        <div class="space-y-2">
+          <label class="text-sm font-semibold">Équipe visiteur</label>
+          <input id="awayName" class="w-full border rounded-lg px-3 py-2" placeholder="Nom de l'équipe visiteur" />
+          <div class="flex items-center gap-3">
+            <label class="text-sm">Logo visiteur</label>
+            <input id="awayLogo" type="file" accept="image/*" class="text-sm" />
+          </div>
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4">
+        <div class="space-y-2">
+          <label class="text-sm font-semibold">Durée (min)</label>
+          <select id="duration" class="w-full border rounded-lg px-3 py-2">
+            <option value="90">90</option>
+            <option value="120">120 (avec prolongations)</option>
+          </select>
+        </div>
+        <div class="space-y-2">
+          <label class="text-sm font-semibold">Horloge</label>
+          <div class="flex items-center gap-2">
+            <button id="clockStart" class="px-3 py-2 rounded-lg bg-emerald-600 text-white">▶️ Start</button>
+            <button id="clockPause" class="px-3 py-2 rounded-lg bg-amber-600 text-white">⏸️ Pause</button>
+            <button id="clockReset" class="px-3 py-2 rounded-lg bg-neutral-200">⟲ Reset</button>
+            <span id="clockDisplay" class="ml-auto text-sm font-mono">00:00</span>
+          </div>
+        </div>
+        <div class="space-y-2">
+          <label class="text-sm font-semibold">Filigrane (ton logo)</label>
+          <div class="flex items-center gap-2">
+            <input id="wmFile" type="file" accept="image/*" class="text-sm" />
+            <label class="text-sm">Opacité</label>
+            <input id="wmOpacity" type="range" min="0" max="1" step="0.05" value="0.2" />
+          </div>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-2 pt-2">
+        <button id="newMatch" class="px-3 py-2 rounded-lg bg-neutral-100 border">🆕 Nouveau match</button>
+        <button id="resumeMatch" class="px-3 py-2 rounded-lg bg-neutral-100 border">🔁 Reprendre dernier</button>
+        <button id="clearMatch" class="px-3 py-2 rounded-lg bg-red-50 text-red-700 border border-red-200">🗑️ Reset</button>
+        <button id="exportPng" class="ml-auto px-3 py-2 rounded-lg bg-indigo-600 text-white">📤 Export PNG</button>
+        <button id="finalScore" class="px-3 py-2 rounded-lg bg-sky-600 text-white">🏁 Annoncer score final</button>
+      </div>
+    </section>
+
+    <!-- BOUTONS D'ÉVÉNEMENTS RAPIDES -->
+    <section class="bg-white rounded-2xl shadow p-4 space-y-3">
+      <div class="font-semibold text-sm">Événements rapides</div>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="space-y-2">
+          <div class="text-sm opacity-80">Pour l'équipe domicile</div>
+          <div class="flex flex-wrap gap-2">
+            <button data-team="HOME" data-type="GOAL" class="evtBtn px-3 py-2 rounded-lg bg-emerald-600 text-white">⚽️ But</button>
+            <button data-team="HOME" data-type="YELLOW" class="evtBtn px-3 py-2 rounded-lg bg-amber-500 text-white">🟨 Jaune</button>
+            <button data-team="HOME" data-type="RED" class="evtBtn px-3 py-2 rounded-lg bg-red-600 text-white">🟥 Rouge</button>
+          </div>
+        </div>
+        <div class="space-y-2">
+          <div class="text-sm opacity-80">Pour l'équipe visiteur</div>
+          <div class="flex flex-wrap gap-2">
+            <button data-team="AWAY" data-type="GOAL" class="evtBtn px-3 py-2 rounded-lg bg-emerald-600 text-white">⚽️ But</button>
+            <button data-team="AWAY" data-type="YELLOW" class="evtBtn px-3 py-2 rounded-lg bg-amber-500 text-white">🟨 Jaune</button>
+            <button data-team="AWAY" data-type="RED" class="evtBtn px-3 py-2 rounded-lg bg-red-600 text-white">🟥 Rouge</button>
+          </div>
+        </div>
+      </div>
+      <div class="grid md:grid-cols-3 gap-4 items-end">
+        <div>
+          <label class="text-sm font-semibold">Joueur</label>
+          <input id="playerInput" class="w-full border rounded-lg px-3 py-2" placeholder="Nom du joueur (optionnel)" />
+        </div>
+        <div>
+          <label class="text-sm font-semibold">Minute (auto si horloge active)</label>
+          <input id="minuteInput" type="number" min="0" max="130" class="w-full border rounded-lg px-3 py-2" placeholder="ex: 62" />
+        </div>
+        <div class="flex gap-2">
+          <button id="halfTime" class="px-3 py-2 rounded-lg bg-neutral-200">⏱️ Mi-temps</button>
+          <button id="resumeTime" class="px-3 py-2 rounded-lg bg-neutral-200">▶️ Reprise</button>
+          <button id="undoEvt" class="px-3 py-2 rounded-lg bg-neutral-100 border">↩️ Annuler</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ZONE DE VISUALISATION / EXPORT -->
+    <section id="capture" class="pitch rounded-2xl shadow-lg p-3 relative">
+      <div class="center-circle"></div>
+      <div class="goal-area goal-left"></div>
+      <div class="goal-area goal-right"></div>
+
+      <!-- Filigrane logo -->
+      <img id="wmImage" alt="filigrane" class="pointer-events-none select-none absolute right-4 bottom-4 w-40 opacity-20" />
+
+      <!-- Header score -->
+      <div class="bg-white/80 rounded-xl p-3 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <img id="homeLogoImg" class="w-9 h-9 object-contain rounded" />
+          <span id="homeLabel" class="font-semibold"></span>
+        </div>
+        <div id="bigScore" class="text-2xl font-extrabold tracking-wide">0 – 0</div>
+        <div class="flex items-center gap-2">
+          <span id="awayLabel" class="font-semibold"></span>
+          <img id="awayLogoImg" class="w-9 h-9 object-contain rounded" />
+        </div>
+      </div>
+
+      <!-- Timeline 2 colonnes -->
+      <div class="grid grid-cols-2 gap-3 mt-3">
+        <div id="colHome" class="space-y-2"></div>
+        <div id="colAway" class="space-y-2"></div>
+      </div>
+
+      <!-- Bandeau central d'état (mi-temps, fin, etc.) -->
+      <div id="stateBanner" class="hidden absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 bg-white/90 border rounded-xl px-4 py-2 text-lg font-bold">Mi-temps</div>
+    </section>
+
+    <footer class="text-xs opacity-70 pb-6">Astuce: ajoute des événements, puis clique « Export PNG ». Tout est sauvegardé automatiquement en local.</footer>
+  </div>
+
+  <script>
+    /* ---------- ÉTAT ---------- */
+    const state = {
+      match: {
+        home: { name: "Domicile", logo: "" },
+        away: { name: "Visiteur", logo: "" },
+        events: [],
+        status: 'NOT_STARTED',
+        score: { home: 0, away: 0 },
+        duration: 90,
+        startedAt: null
+      },
+      wm: { dataUrl: '', opacity: 0.2 },
+      clock: { running: false, startTs: null, elapsed: 0 },
+      history: []
+    };
+
+    const els = {
+      homeName: document.getElementById('homeName'),
+      awayName: document.getElementById('awayName'),
+      homeLogo: document.getElementById('homeLogo'),
+      awayLogo: document.getElementById('awayLogo'),
+      duration: document.getElementById('duration'),
+      clockStart: document.getElementById('clockStart'),
+      clockPause: document.getElementById('clockPause'),
+      clockReset: document.getElementById('clockReset'),
+      clockDisplay: document.getElementById('clockDisplay'),
+      wmFile: document.getElementById('wmFile'),
+      wmOpacity: document.getElementById('wmOpacity'),
+      newMatch: document.getElementById('newMatch'),
+      resumeMatch: document.getElementById('resumeMatch'),
+      clearMatch: document.getElementById('clearMatch'),
+      exportPng: document.getElementById('exportPng'),
+      finalScore: document.getElementById('finalScore'),
+      evtBtns: Array.from(document.querySelectorAll('.evtBtn')),
+      playerInput: document.getElementById('playerInput'),
+      minuteInput: document.getElementById('minuteInput'),
+      halfTime: document.getElementById('halfTime'),
+      resumeTime: document.getElementById('resumeTime'),
+      undoEvt: document.getElementById('undoEvt'),
+      capture: document.getElementById('capture'),
+      homeLogoImg: document.getElementById('homeLogoImg'),
+      awayLogoImg: document.getElementById('awayLogoImg'),
+      homeLabel: document.getElementById('homeLabel'),
+      awayLabel: document.getElementById('awayLabel'),
+      bigScore: document.getElementById('bigScore'),
+      colHome: document.getElementById('colHome'),
+      colAway: document.getElementById('colAway'),
+      stateBanner: document.getElementById('stateBanner'),
+      wmImage: document.getElementById('wmImage')
+    };
+
+    const save = () => {
+      localStorage.setItem('liveMatchV1', JSON.stringify(state));
+    }
+    const load = () => {
+      const raw = localStorage.getItem('liveMatchV1');
+      if (!raw) return false;
+      try {
+        const obj = JSON.parse(raw);
+        Object.assign(state, obj); // shallow merge ok (même structure)
+        renderAll();
+        return true;
+      } catch (e) { console.warn('load fail', e); return false; }
+    }
+
+    /* ---------- HELPERS ---------- */
+    const fileToDataURL = (file) => new Promise((res, rej) => {
+      const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file);
+    });
+
+    const nowMinute = () => {
+      if (!state.clock.running && state.clock.elapsed===0) return null;
+      const base = state.clock.elapsed + (state.clock.running ? (Date.now() - state.clock.startTs) : 0);
+      return Math.floor(base/60000);
+    }
+
+    const pushEvent = (evt) => {
+      state.history.push(JSON.stringify(state.match));
+      state.match.events.push(evt);
+      if (evt.type === 'GOAL') {
+        if (evt.team === 'HOME') state.match.score.home++;
+        if (evt.team === 'AWAY') state.match.score.away++;
+        evt.snapshot = { ...state.match.score };
+      }
+      save();
+      renderAll();
+    }
+
+    const undo = () => {
+      if (!state.history.length) return;
+      const prev = state.history.pop();
+      state.match = JSON.parse(prev);
+      save();
+      renderAll();
+    }
+
+    const fmtScore = () => `${state.match.score.home} – ${state.match.score.away}`;
+    const iconFor = (type) => type==='GOAL'?'⚽️':type==='YELLOW'?'🟨':type==='RED'?'🟥':'⏱️';
+
+    /* ---------- RENDER ---------- */
+    function renderAll(){
+      els.homeLabel.textContent = state.match.home.name || 'Domicile';
+      els.awayLabel.textContent = state.match.away.name || 'Visiteur';
+      els.bigScore.textContent = fmtScore();
+
+      els.homeLogoImg.src = state.match.home.logo || '';
+      els.awayLogoImg.src = state.match.away.logo || '';
+
+      els.wmImage.src = state.wm.dataUrl || '';
+      els.wmImage.style.opacity = state.wm.opacity;
+
+      els.colHome.innerHTML = '';
+      els.colAway.innerHTML = '';
+      state.match.events.forEach(e => {
+        const minute = typeof e.minute === 'number' ? `${e.minute}'` : '';
+        let extra = '';
+        if (e.type==='GOAL' && e.snapshot) extra = ` <span class="text-xs opacity-80">(${e.snapshot.home}–${e.snapshot.away})</span>`;
+        const node = document.createElement('div');
+        node.className = 'evt bg-white/80 rounded-lg px-3 py-2 shadow flex items-center gap-2';
+        node.innerHTML = `<span class="font-mono text-xs">${minute}</span> <span>${iconFor(e.type)}</span> <span class="font-semibold">${e.player||''}</span>${extra}`;
+        if (e.team === 'HOME') els.colHome.appendChild(node);
+        else if (e.team === 'AWAY') els.colAway.appendChild(node);
+        else { // central banner event
+          const b = document.createElement('div');
+          b.className = 'col-span-2 text-center font-bold';
+          b.textContent = e.type==='HT' ? 'MI-TEMPS' : (e.type==='FT' ? 'FIN DU MATCH' : '');
+        }
+      });
+    }
+
+    function renderClock(){
+      const ms = state.clock.elapsed + (state.clock.running ? (Date.now()-state.clock.startTs) : 0);
+      const m = Math.floor(ms/60000), s=Math.floor((ms%60000)/1000);
+      els.clockDisplay.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      requestAnimationFrame(renderClock);
+    }
+
+    /* ---------- INIT BINDINGS ---------- */
+    els.homeName.addEventListener('input', e=>{ state.match.home.name=e.target.value; save(); renderAll(); });
+    els.awayName.addEventListener('input', e=>{ state.match.away.name=e.target.value; save(); renderAll(); });
+    els.duration.addEventListener('change', e=>{ state.match.duration = Number(e.target.value); save(); });
+
+    els.homeLogo.addEventListener('change', async (e)=>{
+      const f=e.target.files?.[0]; if(!f) return; state.match.home.logo = await fileToDataURL(f); save(); renderAll();
+    });
+    els.awayLogo.addEventListener('change', async (e)=>{
+      const f=e.target.files?.[0]; if(!f) return; state.match.away.logo = await fileToDataURL(f); save(); renderAll();
+    });
+
+    els.wmFile.addEventListener('change', async (e)=>{
+      const f=e.target.files?.[0]; if(!f) return; state.wm.dataUrl = await fileToDataURL(f); save(); renderAll();
+    });
+    els.wmOpacity.addEventListener('input', (e)=>{ state.wm.opacity = Number(e.target.value); save(); renderAll(); });
+
+    // Horloge
+    els.clockStart.addEventListener('click', ()=>{
+      if(!state.clock.running){ state.clock.running=true; state.clock.startTs=Date.now(); }
+      state.match.status='LIVE'; save();
+    });
+    els.clockPause.addEventListener('click', ()=>{
+      if(state.clock.running){ state.clock.elapsed += Date.now()-state.clock.startTs; state.clock.running=false; }
+      save();
+    });
+    els.clockReset.addEventListener('click', ()=>{
+      state.clock.running=false; state.clock.elapsed=0; state.clock.startTs=null; save();
+    });
+
+    // Événements rapides
+    els.evtBtns.forEach(btn=>btn.addEventListener('click', ()=>{
+      const team = btn.dataset.team; const type = btn.dataset.type;
+      if (type==='RED' && !confirm('Confirmer carton ROUGE ?')) return;
+      let minute = parseInt(els.minuteInput.value,10);
+      if (isNaN(minute)) {
+        const m = nowMinute(); minute = (m==null?0:m);
+      }
+      const player = els.playerInput.value.trim();
+      pushEvent({ id: crypto.randomUUID(), minute, team, type, player });
+      els.playerInput.value=''; els.minuteInput.value='';
+    }));
+
+    els.halfTime.addEventListener('click', ()=>{
+      const minute = nowMinute() ?? 45;
+      pushEvent({ id: crypto.randomUUID(), minute, team: null, type: 'HT' });
+      flashBanner('Mi-temps');
+    });
+    els.resumeTime.addEventListener('click', ()=>{
+      state.match.status='LIVE'; save(); flashBanner('Reprise');
+    });
+    els.undoEvt.addEventListener('click', undo);
+
+    // Gestion match
+    els.newMatch.addEventListener('click', ()=>{
+      if(!confirm('Créer un nouveau match ?')) return;
+      Object.assign(state, {
+        match: { home:{name:'Domicile',logo:''}, away:{name:'Visiteur',logo:''}, events:[], status:'NOT_STARTED', score:{home:0,away:0}, duration:90, startedAt: Date.now() },
+        wm: state.wm,
+        clock: { running:false, startTs:null, elapsed:0 },
+        history: []
+      });
+      save(); renderAll();
+    });
+
+    els.resumeMatch.addEventListener('click', ()=>{ load(); });
+
+    els.clearMatch.addEventListener('click', ()=>{
+      if(!confirm('Réinitialiser toutes les données locales ?')) return;
+      localStorage.removeItem('liveMatchV1');
+      location.reload();
+    });
+
+    els.finalScore.addEventListener('click', ()=>{
+      const minute = nowMinute() ?? state.match.duration;
+      pushEvent({ id: crypto.randomUUID(), minute, team:null, type:'FT' });
+      flashBanner(`FIN • ${fmtScore()}`);
+    });
+
+    const flashBanner = (txt)=>{
+      els.stateBanner.textContent = txt; els.stateBanner.classList.remove('hidden');
+      setTimeout(()=>els.stateBanner.classList.add('hidden'), 2000);
+    }
+
+    // Export PNG (prêt pour WhatsApp)
+    els.exportPng.addEventListener('click', async ()=>{
+      const node = els.capture;
+      const canvas = await html2canvas(node, { backgroundColor: null, scale: 2 });
+      canvas.toBlob(async (blob)=>{
+        const file = new File([blob], `match-${Date.now()}.png`, { type: 'image/png' });
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+          try { await navigator.share({ files:[file], title:'Score final', text: fmtScore() }); }
+          catch(e){ downloadBlob(blob); }
+        } else {
+          downloadBlob(blob);
+        }
+      });
+    });
+
+    function downloadBlob(blob){
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download='match.png';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 1000);
+    }
+
+    // Démarrage
+    load();
+    renderAll();
+    renderClock();
+  </script>
+</body>
+</html>
