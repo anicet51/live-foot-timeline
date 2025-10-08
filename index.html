@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Live Match – Timeline (V3 FIX)</title>
+  <title>Live Match – Timeline (v3.1 Safari Fix)</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script src="https://cdn.tailwindcss.com"></script>
@@ -16,7 +16,7 @@
     .evt .min{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; opacity:.9; }
     .evt .ico{ width:18px; height:18px; display:inline-flex; align-items:center; justify-content:center; }
     .evt .extra{ opacity:.85; font-size:12px; }
-    .evt.muted{ opacity:.85; }
+    .evt.muted{ opacity:.9; }
     .col>div{ padding:6px 2px; border-bottom:1px solid var(--evt-sep);}
     .capture{ position:relative; width:100%; aspect-ratio:3/4; overflow:hidden; border-radius:16px; }
     .abs{ position:absolute; inset:0; width:100%; height:100%; }
@@ -76,7 +76,7 @@
             <button id="clockStart" class="px-3 py-2 rounded-lg bg-emerald-600 text-white">▶️ Start</button>
             <button id="clockPause" class="px-3 py-2 rounded-lg bg-amber-600 text-white">⏸️ Pause</button>
             <button id="clockReset" class="px-3 py-2 rounded-lg bg-neutral-200">⟲ Reset</button>
-            <span id="clockDisplay" class="ml-auto text-sm font-mono">00:00</span>
+            <span class="ml-auto text-sm font-mono"><span id="clockDisplay">00:00</span></span>
           </div>
         </div>
         <div class="space-y-2">
@@ -182,6 +182,13 @@
   </div>
 
   <script>
+    // ---- Safari-safe UID ----
+    function uid() {
+      try { return crypto.randomUUID(); } catch(e) {
+        return (Date.now().toString(36) + Math.random().toString(36).slice(2,8));
+      }
+    }
+
     const THEMES = {
       classic: { stripeA:'#2f7d32', stripeB:'#256b2b', overlay:'rgba(0,0,0,.22)', evtSep:'rgba(255,255,255,.12)', evtColor:'#fff' },
       night:   { stripeA:'#0e2a47', stripeB:'#0b2138', overlay:'rgba(0,0,0,.28)', evtSep:'rgba(255,255,255,.12)', evtColor:'#eaf2ff' },
@@ -210,7 +217,7 @@
       homeLogo: $('homeLogo'), awayLogo: $('awayLogo'),
       duration: $('duration'),
       clockStart: $('clockStart'), clockPause: $('clockPause'), clockReset: $('clockReset'),
-      clockDisplayHeader: $('clockDisplayHeader'), dot: $('dot'),
+      clockDisplay: $('clockDisplay'), clockDisplayHeader: $('clockDisplayHeader'), dot: $('dot'),
       wmFile: $('wmFile'), wmOpacity: $('wmOpacity'),
       newMatch: $('newMatch'), resumeMatch: $('resumeMatch'), clearMatch: $('clearMatch'),
       exportPng: $('exportPng'), finalScore: $('finalScore'),
@@ -225,8 +232,8 @@
       wmImage: $('wmImage')
     };
 
-    const save = () => localStorage.setItem('liveMatchV6', JSON.stringify(state));
-    const load = () => { try { const obj = JSON.parse(localStorage.getItem('liveMatchV6')); if(!obj) return false; Object.assign(state, obj); applyTheme(); renderAll(); return true; } catch(e){ return false; } };
+    const save = () => localStorage.setItem('liveMatchV7', JSON.stringify(state));
+    const load = () => { try { const obj = JSON.parse(localStorage.getItem('liveMatchV7')); if(!obj) return false; Object.assign(state, obj); applyTheme(); renderAll(); return true; } catch(e){ return false; } };
 
     const fileToDataURL = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
     const nowMinute = () => { if (!state.clock.running && state.clock.elapsed===0) return null; const base = state.clock.elapsed + (state.clock.running ? (Date.now() - state.clock.startTs) : 0); return Math.floor(base/60000); };
@@ -276,6 +283,7 @@
       const ms = state.clock.elapsed + (state.clock.running ? (Date.now()-state.clock.startTs) : 0);
       const m = Math.floor(ms/60000), s=Math.floor((ms%60000)/1000);
       const val = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      els.clockDisplay.textContent = val;
       els.clockDisplayHeader.textContent = val;
       els.dot.classList.toggle('blink', state.clock.running);
       requestAnimationFrame(loop);
@@ -301,40 +309,40 @@
     els.wmFile.onchange = async e=>{ const f=e.target.files?.[0]; if(!f) return; state.wm.dataUrl=await fileToDataURL(f); save(); renderAll(); };
     els.wmOpacity.oninput = e=>{ state.wm.opacity=Number(e.target.value); save(); renderAll(); };
 
-    els.clockStart.onclick = ()=>{ if(!state.clock.running){ state.clock.running=true; state.clock.startTs=Date.now(); } state.match.status='LIVE'; save(); };
-    els.clockPause.onclick = ()=>{ if(state.clock.running){ state.clock.elapsed += Date.now()-state.clock.startTs; state.clock.running=false; } save(); };
-    els.clockReset.onclick = ()=>{ state.clock.running=false; state.clock.elapsed=0; state.clock.startTs=null; save(); };
+    els.clockStart.onclick = (ev)=>{ ev.preventDefault(); if(!state.clock.running){ state.clock.running=true; state.clock.startTs=Date.now(); } state.match.status='LIVE'; save(); };
+    els.clockPause.onclick = (ev)=>{ ev.preventDefault(); if(state.clock.running){ state.clock.elapsed += Date.now()-state.clock.startTs; state.clock.running=false; } save(); };
+    els.clockReset.onclick = (ev)=>{ ev.preventDefault(); state.clock.running=false; state.clock.elapsed=0; state.clock.startTs=null; save(); };
 
     function addEvt(team, type){
       let minute = parseInt(els.minuteInput.value,10);
       if (isNaN(minute)) { const m = nowMinute(); minute = (m==null?0:m); }
       const player = els.playerInput.value.trim();
-      pushEvent({ id: crypto.randomUUID(), minute, team, type, player });
+      pushEvent({ id: uid(), minute, team, type, player });
       els.playerInput.value=''; els.minuteInput.value='';
     }
-    document.getElementById('btnHomeGoal').onclick   = ()=> addEvt('HOME','GOAL');
-    document.getElementById('btnHomeYellow').onclick = ()=> addEvt('HOME','YELLOW');
-    document.getElementById('btnHomeRed').onclick    = ()=> addEvt('HOME','RED');
-    document.getElementById('btnAwayGoal').onclick   = ()=> addEvt('AWAY','GOAL');
-    document.getElementById('btnAwayYellow').onclick = ()=> addEvt('AWAY','YELLOW');
-    document.getElementById('btnAwayRed').onclick    = ()=> addEvt('AWAY','RED');
+    document.getElementById('btnHomeGoal').onclick   = (e)=>{ e.preventDefault(); addEvt('HOME','GOAL'); };
+    document.getElementById('btnHomeYellow').onclick = (e)=>{ e.preventDefault(); addEvt('HOME','YELLOW'); };
+    document.getElementById('btnHomeRed').onclick    = (e)=>{ e.preventDefault(); addEvt('HOME','RED'); };
+    document.getElementById('btnAwayGoal').onclick   = (e)=>{ e.preventDefault(); addEvt('AWAY','GOAL'); };
+    document.getElementById('btnAwayYellow').onclick = (e)=>{ e.preventDefault(); addEvt('AWAY','YELLOW'); };
+    document.getElementById('btnAwayRed').onclick    = (e)=>{ e.preventDefault(); addEvt('AWAY','RED'); };
 
-    els.halfTime.onclick = (ev)=>{ ev.stopPropagation(); if (state.match.status==='HT') return;
-      const minute = nowMinute() ?? 45; pushEvent({ id: crypto.randomUUID(), minute, team: null, type: 'HT', player:'Mi-temps' });
+    els.halfTime.onclick = (ev)=>{ ev.preventDefault(); if (state.match.status==='HT') return;
+      const minute = nowMinute() ?? 45; pushEvent({ id: uid(), minute, team: null, type: 'HT', player:'Mi-temps' });
       state.match.status='HT'; save();
       els.stateBanner.textContent='Mi-temps (tap pour masquer)'; els.stateBanner.classList.remove('hidden');
     };
-    els.resumeTime.onclick = ()=>{ state.match.status='LIVE'; save(); els.stateBanner.classList.add('hidden'); };
+    els.resumeTime.onclick = (ev)=>{ ev.preventDefault(); state.match.status='LIVE'; save(); els.stateBanner.classList.add('hidden'); };
     els.stateBanner.onclick = ()=> els.stateBanner.classList.add('hidden');
-    els.undoEvt.onclick = ()=> undo();
+    els.undoEvt.onclick = (ev)=>{ ev.preventDefault(); undo(); };
 
-    els.finalScore.onclick = ()=>{ if (state.match.status==='FT') return;
-      const minute = nowMinute() ?? state.match.duration; pushEvent({ id: crypto.randomUUID(), minute, team:null, type:'FT', player:'Fin de match' });
+    els.finalScore.onclick = (ev)=>{ ev.preventDefault(); if (state.match.status==='FT') return;
+      const minute = nowMinute() ?? state.match.duration; pushEvent({ id: uid(), minute, team:null, type:'FT', player:'Fin de match' });
       state.match.status='FT'; save();
       els.stateBanner.textContent = `FIN • ${fmtScore()} (tap pour masquer)`; els.stateBanner.classList.remove('hidden');
     };
 
-    els.exportPng.onclick = async ()=>{ const canvas = await html2canvas(els.capture, { backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--stripe-a').trim() || '#2f7d32', scale: 2 });
+    els.exportPng.onclick = async (ev)=>{ ev.preventDefault(); const canvas = await html2canvas(els.capture, { backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--stripe-a').trim() || '#2f7d32', scale: 2 });
       canvas.toBlob(async (blob)=>{ const file = new File([blob], `match-${Date.now()}.png`, { type: 'image/png' });
         if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files:[file], title:'Score final' }); } catch(e){ downloadBlob(blob); } }
         else { downloadBlob(blob); }
