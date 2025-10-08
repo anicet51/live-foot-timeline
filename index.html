@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Live Match – Timeline (v4.4)</title>
+  <title>Live Match – Timeline (v4.5)</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script src="https://cdn.tailwindcss.com"></script>
@@ -200,11 +200,11 @@
       <div id="stateBanner" class="hidden banner-sticky absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 bg-white/95 border rounded-xl px-4 py-2 text-lg font-bold">Mi-temps</div>
     </section>
 
-    <footer class="text-xs opacity-70 pb-6">v4.4 — export sans rognage + thème RJH.</footer>
+    <footer class="text-xs opacity-70 pb-6">v4.5 — export anti-rognage ++ + thème RJH.</footer>
   </div>
 
 <script>
-const KEY = 'liveMatchV20';
+const KEY = 'liveMatchV21';
 function hasStorage(){ try{ const t='__t'+Date.now(); localStorage.setItem(t,'1'); localStorage.removeItem(t); return true; }catch(e){ return false; } }
 const HAS_STORAGE = hasStorage();
 const $ = id => document.getElementById(id);
@@ -411,25 +411,42 @@ $('clearMatch').onclick = safe(()=>{
   $('stateBanner').textContent='Réinitialisé'; $('stateBanner').classList.remove('hidden');
 });
 
-async function exportPNG(){
-  // Pastille OFF + marge basse header pour éviter tout rognage
-  const oldDot = els.dot.style.display;
-  const oldPad = els.headBar.style.paddingBottom;
-  const oldTop = els.cols.style.top;
+async function raf(){ return new Promise(r=>requestAnimationFrame(()=>r())); }
 
+async function exportPNG(){
+  // Pastille OFF + expansion header pour éviter tout rognage
+  const oldDot = els.dot.style.display;
+  const oldPadB = els.headBar.style.paddingBottom;
+  const oldClampL = els.homeLabel.style.webkitLineClamp;
+  const oldClampR = els.awayLabel.style.webkitLineClamp;
+  const oldMaxH_L = els.homeLabel.style.maxHeight;
+  const oldMaxH_R = els.awayLabel.style.maxHeight;
+
+  window.scrollTo(0,0);
   els.dot.style.display = 'none';
-  els.headBar.style.paddingBottom = '14px';
+  els.headBar.style.paddingBottom = '18px';
+  els.homeLabel.style.webkitLineClamp = 'unset';
+  els.awayLabel.style.webkitLineClamp = 'unset';
+  els.homeLabel.style.maxHeight = 'none';
+  els.awayLabel.style.maxHeight = 'none';
   measureHeader();
 
-  // petite pause le temps du reflow pour html2canvas
-  await new Promise(r => setTimeout(r, 60));
+  // Deux frames pour forcer le reflow complet avant capture
+  await raf(); await raf();
 
-  const canvas = await html2canvas(els.capture, { backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--stripe-a').trim() || '#2f7d32', scale: 2 });
+  const canvas = await html2canvas(els.capture, {
+    backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--stripe-a').trim() || '#2f7d32',
+    scale: 2,
+    useCORS: true
+  });
 
-  // restore
+  // Restore styles
   els.dot.style.display = oldDot || '';
-  els.headBar.style.paddingBottom = oldPad;
-  els.cols.style.top = oldTop;
+  els.headBar.style.paddingBottom = oldPadB;
+  els.homeLabel.style.webkitLineClamp = oldClampL;
+  els.awayLabel.style.webkitLineClamp = oldClampR;
+  els.homeLabel.style.maxHeight = oldMaxH_L;
+  els.awayLabel.style.maxHeight = oldMaxH_R;
   measureHeader();
 
   canvas.toBlob((blob)=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='match.png'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); });
