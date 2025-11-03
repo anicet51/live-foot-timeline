@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Live Match – Timeline (v4.8 fix 1024)</title>
+  <title>Live Match – Export Pro 1024</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <script src="https://cdn.tailwindcss.com"></script>
@@ -18,15 +18,9 @@
     .evt.muted{ opacity:.85; }
     .col>div{ padding:6px 2px; border-bottom:1px solid var(--evt-sep);}
     .capture{ position:relative; width:100%; aspect-ratio:3/4; overflow:hidden; border-radius:16px; }
-    /* Export carré : 1:1 et texte événements plus compact */
-    .export-square{ aspect-ratio:1/1 !important; width:1024px !important; height:1024px !important; border-radius:24px; }
-    .export-square .evt{ font-size:12px !important; gap:.4rem !important; }
-    .export-square #headWrap{ padding-top:22px !important; padding-bottom:22px !important; }
-    .export-square #headBar{ padding-top:10px !important; padding-bottom:14px !important; min-height:auto !important; }
     .abs{ position:absolute; inset:0; width:100%; height:100%; }
     .blink{ animation: bl 1s step-start infinite;} @keyframes bl{50%{opacity:.2}}
     .theme-sel { appearance:none; padding:.4rem .6rem; border-radius:.6rem; border:1px solid #e5e7eb; background:#fff; }
-    /* Header fit (2 lignes max à l’écran) */
     .header-wrap{ padding-top:20px; padding-bottom:16px; }
     .header-bar{ line-height:1.26; align-items:center; min-height:86px; }
     .team-box{ min-width:0; display:flex; align-items:center; gap:.45rem; flex:1; }
@@ -44,6 +38,16 @@
     .team-logo{ width:26px; height:26px; object-fit:contain; }
     .score-wrap{ display:flex; flex-direction:column; align-items:center; justify-content:center; padding:2px 0;}
     #bigScore{ font-weight:900; font-size:2.1rem; letter-spacing:.02em; }
+    .export-square{ aspect-ratio: 1/1 !important; width: 1024px !important; height: 1024px !important; border-radius: 24px; }
+    .export-square #headWrap { padding-top: 48px !important; padding-bottom: 28px !important; }
+    .export-square #headBar { padding: 18px 24px !important; min-height: auto !important; }
+    .export-square #bigScore { font-size: 120px !important; }
+    .export-square .team-label { font-size: 44px !important; -webkit-line-clamp: 3; }
+    .export-square #cols { top: 260px !important; padding: 24px !important; gap: 24px !important; }
+    .export-square .evt { font-size: 28px !important; line-height: 1.2 !important; gap: 10px !important; }
+    .export-square .evt .ico { width: 28px !important; height: 28px !important; }
+    .export-square .evt .extra { font-size: 22px !important; opacity: .9 !important; }
+    .export-square .col > div { padding: 10px 0 !important; border-bottom: 2px solid rgba(255,255,255,.18) !important; }
   </style>
 </head>
 <body class="text-neutral-900">
@@ -201,11 +205,11 @@
       <div id="stateBanner" class="hidden banner-sticky absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 bg-white/95 border rounded-xl px-4 py-2 text-lg font-bold">Mi-temps</div>
     </section>
 
-    <footer class="text-xs opacity-70 pb-6">v4.8 fix — export 1024×1024 + events compacts.</footer>
+    <footer class="text-xs opacity-70 pb-6">Export Pro 1024 — score & événements XXL pour WhatsApp.</footer>
   </div>
 
 <script>
-const KEY = 'liveMatchV25';
+const KEY = 'liveMatchV26';
 function hasStorage(){ try{ const t='__t'+Date.now(); localStorage.setItem(t,'1'); localStorage.removeItem(t); return true; }catch(e){ return false; } }
 const HAS_STORAGE = hasStorage();
 const $ = id => document.getElementById(id);
@@ -358,7 +362,6 @@ $('btnAwayGoal').onclick   = safe(()=>addEvt('AWAY','GOAL'));
 $('btnAwayYellow').onclick = safe(()=>addEvt('AWAY','YELLOW'));
 $('btnAwayRed').onclick    = safe(()=>addEvt('AWAY','RED'));
 
-// Mi-temps / Reprise (anti doublon)
 $('halfTime').onclick = safe(()=>{
   if(state.match.events.some(e=>e.type==='HT')){ $('stateBanner').textContent='Mi-temps (déjà ajouté)'; $('stateBanner').classList.remove('hidden'); return; }
   const minute=nowMinute() ?? 45;
@@ -385,7 +388,6 @@ $('finalScore').onclick = safe(()=>{
   $('stateBanner').textContent='FIN • ' + fmtScore(); $('stateBanner').classList.remove('hidden');
 });
 
-// Nouveau match (garde équipes/logos)
 $('newMatch').onclick = safe(()=>{
   state.match.events = [];
   state.match.score = {home:0, away:0};
@@ -394,14 +396,12 @@ $('newMatch').onclick = safe(()=>{
   save(state); renderAll();
 });
 
-// Reprendre dernier
 $('resumeMatch').onclick = safe(()=>{
   const s = load();
   if(s){ Object.assign(state, s); applyTheme(); renderAll(); }
   else { $('stateBanner').textContent='Aucune sauvegarde trouvée'; $('stateBanner').classList.remove('hidden'); }
 });
 
-// Reset total
 $('clearMatch').onclick = safe(()=>{
   hardClearStorage();
   const keptTheme = state.ui.theme;
@@ -413,14 +413,10 @@ $('clearMatch').onclick = safe(()=>{
 
 async function raf(){ return new Promise(r=>requestAnimationFrame(()=>r())); }
 
-// === EXPORT PNG GARANTI 1024×1024 ===
 async function exportPNG(){
-  // 1) Mode carré
   window.scrollTo(0,0);
   const cap = $('capture');
   cap.classList.add('export-square');
-
-  // 2) Débloquer labels + masquer pastille
   const dot = $('dot');
   const l = $('homeLabel'), r = $('awayLabel');
   const backup = {
@@ -430,31 +426,22 @@ async function exportPNG(){
   };
   dot.style.display='none';
   [l,r].forEach(el=>{ el.style.display='block'; el.style.overflow='visible'; el.style.webkitLineClamp='unset'; });
-
-  // 3) Stabiliser layout
   await raf(); await raf();
-
-  // 4) Capture brute (peu importe la taille)
   const raw = await html2canvas(cap, {
     backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--stripe-a').trim() || '#2f7d32',
-    scale: 1, useCORS: true
+    scale: Math.max(2, window.devicePixelRatio || 2),
+    useCORS: true
   });
-
-  // 5) Recomposer dans canvas 1024×1024
   const out = document.createElement('canvas');
   out.width = 1024; out.height = 1024;
   const ctx = out.getContext('2d');
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(raw, 0, 0, out.width, out.height);
-
-  // 6) Restaurer styles
   dot.style.display = backup.dot || '';
   l.style.display = backup.l.display; l.style.overflow = backup.l.overflow; l.style.webkitLineClamp = backup.l.clamp;
   r.style.display = backup.r.display; r.style.overflow = backup.r.overflow; r.style.webkitLineClamp = backup.r.clamp;
   cap.classList.remove('export-square');
-
-  // 7) Télécharger
   out.toBlob((blob)=>{
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
